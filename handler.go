@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type City struct {
@@ -51,4 +52,45 @@ func postCityHandler(c echo.Context) error {
 	city.ID = int(id)
 
 	return c.JSON(http.StatusCreated, city)
+}
+
+type LoginRequestBody struct {
+	Username string `json:"username,omitempty" form:"username"`
+	Password string `json:"password,omitempty" form:"password"`
+}
+
+func signUpHandler(c echo.Context) error {
+	var req LoginRequestBody
+	c.Bind(&req)
+
+	if req.Password == "" || req.Username == "" {
+		return c.String(http.StatusBadRequest, "Username or Password is empty")
+	}
+
+	var count int
+
+	err := db.Get(&count, "SELECT COUNT(*) FROM users WHERE Username=?", req.Username)
+	if err != nil {
+		log.Println(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+
+	if count > 0 {
+		return c.String(http.StatusConflict, "Username is already used")
+	}
+
+	pw := req.Password + salt
+
+	hashedPass, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
+	if err != nil {
+		log.Println(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+
+	_, err = db.Exec("INSERT INTO users (Username, HashedPass) VALUES (?, ?)", req.Username, hashedPass)
+	if err != nil {
+		log.Println(err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	return c.NoContent(http.StatusCreated)
 }
