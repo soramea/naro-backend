@@ -6,10 +6,12 @@ import (
 	"time"
 
 	"github.com/go-sql-driver/mysql"
+	"github.com/srinathgs/mysqlstore"
 
-	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
+	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 )
 
 var (
@@ -48,11 +50,24 @@ func main() {
 		log.Fatal(err)
 	}
 
+	store, err := mysqlstore.NewMySQLStoreFromConnection(db.DB, "sessions", "/", 60*60*24*14, []byte("secret-token")) 
+
+	if err != nil { 
+		log.Fatal(err) 
+	} 
+
 	e := echo.New()
+	e.Use(middleware.Logger())       
+	e.Use(session.Middleware(store)) 
+
+	e.POST("/login", loginHandler) 
 	e.POST("/signup", signUpHandler) 
 
-	e.GET("/cities/:cityName", getCityInfoHandler)
-	e.POST("/cities", postCityHandler)
+	withAuth := e.Group("") 
+	withAuth.Use(userAuthMiddleware) 
+	withAuth.GET("/cities/:cityName", getCityInfoHandler) 
+	withAuth.POST("/cities", postCityHandler) 
+	withAuth.GET("/whoami", getWhoAmIHandler)
 
 	e.Start(":8080")
 }
