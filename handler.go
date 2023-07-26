@@ -20,6 +20,10 @@ type City struct {
 	Population  sql.NullInt64  `json:"population,omitempty"  db:"Population"`
 }
 
+type Country struct {
+	CountryName sql.NullString `json:"countryName,omitempty" db:"Name"`
+}
+
 type LoginRequestBody struct {
 	Username string `json:"username,omitempty" form:"username"`
 	Password string `json:"password,omitempty" form:"password"`
@@ -68,6 +72,33 @@ func postCityHandler(c echo.Context) error {
 	city.ID = int(id)
 
 	return c.JSON(http.StatusCreated, city)
+}
+
+func getCountryListHandler(c echo.Context) error {
+	var countries []Country
+	err := db.Select(&countries, "SELECT Name FROM country")
+	if err != nil {
+		fmt.Println(err)
+		return c.String(http.StatusInternalServerError, "something wrong in getting country list")
+	}
+	return c.JSON(http.StatusOK, countries)
+}
+
+func getCityListHandler(c echo.Context) error {
+	var cities []City
+	var countryCode string
+	countryName := c.Param("countryName")
+	err := db.Get(&countryCode, "SELECT code FROM country WHERE name=?",countryName)
+	if err != nil {
+		fmt.Println(err)
+		return c.String(http.StatusInternalServerError, "something wrong in getting countrycode")
+	}
+	err = db.Select(&cities, "SELECT * FROM city WHERE countrycode=?",countryCode)
+	if err != nil {
+		fmt.Println(err)
+		return c.String(http.StatusInternalServerError, "something wrong in getting city list")
+	}
+	return c.JSON(http.StatusOK, cities)
 }
 
 func signUpHandler(c echo.Context) error {
@@ -144,6 +175,17 @@ func loginHandler(c echo.Context) error {
 	return c.NoContent(http.StatusOK)
 }
 
+func logoutHandler(c echo.Context) error {
+	sess, err := session.Get("sessions", c)
+	if err != nil {
+		fmt.Println(err)
+		return c.String(http.StatusInternalServerError, "something wrong in logout")
+	}
+	sess.Values["username"] = nil
+
+	return c.NoContent(http.StatusOK)
+}
+
 func userAuthMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		sess, err := session.Get("sessions", c)
@@ -164,4 +206,14 @@ func getWhoAmIHandler(c echo.Context) error {
 	return c.JSON(http.StatusOK, Me{
 		Username: c.Get("userName").(string),
 	})
+}
+
+func calculatePopulationSumHandler(cities []City) map[string]int{
+	output := make(map[string]int)
+	for _, cityInfo := range cities {
+		if cityInfo.CountryCode.Valid {
+			output[cityInfo.CountryCode.String] += int(cityInfo.Population.Int64)
+		}
+	}
+	return output
 }
